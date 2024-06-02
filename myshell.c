@@ -1,4 +1,3 @@
-//214104226 Ayal Birenstock
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -6,150 +5,91 @@
 #include <sys/wait.h>
 
 #define MAX_LINE 100
+#define MAX_HISTORY 50
 
-char *history_list[MAX_LINE];
+char *history_list[MAX_HISTORY];
 int history_count = 0;
 char **original_env;
+char *search_paths[MAX_LINE];
+int search_path_count = 0;
 
 void restore_env() {
     for (int i = 0; original_env[i] != NULL; i++) {
-        putenv(original_env[i]);
+        putenv(strdup(original_env[i]));
     }
 }
 
 void cd(char *path) {
     if (chdir(path) != 0) {
         perror("cd failed");
-        exit(1);
     }
 }
 
 void pwd() {
-    //pwd using getcwd
     char cwd[MAX_LINE];
     if (getcwd(cwd, sizeof(cwd)) == NULL) {
         perror("pwd failed");
-        exit(1);
     } else {
         printf("%s\n", cwd);
     }
 }
 
 void history() {
-    //"history prints in FIFO and includes the history command itself" 
     for (int i = 0; i < history_count; ++i) {
         printf("%d %s\n", i, history_list[i]);
     }
 }
 
 void add_to_history(char *command) {
-    history_list[history_count] = strdup(command);
-    history_count++;
-}
-
-void my_cat(char *file) {
-    pid_t pid;
-    if ((pid = fork()) < 0) {
-        perror("fork failed");
-        exit(1);
-    }
-    if (pid == 0) {
-        char *args[] = {"/bin/cat", file, NULL};
-        if (execv(args[0], args) < 0) {
-            perror("execv failed");
-            exit(1);
-        }
+    if (history_count < MAX_HISTORY) {
+        history_list[history_count] = strdup(command);
+        history_count++;
     } else {
-        if (wait(NULL) < 0) {
-            perror("wait failed");
-            exit(1);
+        free(history_list[0]);
+        for (int i = 1; i < MAX_HISTORY; ++i) {
+            history_list[i - 1] = history_list[i];
         }
+        history_list[MAX_HISTORY - 1] = strdup(command);
     }
 }
 
 void my_exit() {
-    //exit. not much to change...
+    //not much to do here...
     restore_env();
     exit(0);
 }
 
-void my_sleep(char *seconds) {
+void execute_command(char *command, char *argv[], char **envp) {
     pid_t pid;
     if ((pid = fork()) < 0) {
         perror("fork failed");
         exit(1);
     }
     if (pid == 0) {
-        char *args[] = {"/bin/sleep", seconds, NULL};
-        if (execv(args[0], args) < 0) {
-            perror("execv failed");
-            exit(1);
+        // Check the current directory for the command
+        if (access(command, X_OK) == 0) {
+            // Execute the command
+            if (execve(command, argv, envp) < 0) {
+                fprintf(stderr, "Execution of %s failed\n", command);
+                perror("execv failed");
+                exit(1);
+            }
+            return;  //will get here only if execv fails
         }
-    } else {
-        if (wait(NULL) < 0) {
-            perror("wait failed");
-            exit(1);
-        }
-    }
-}
 
-void my_ls() {
-    pid_t pid;
-    if ((pid = fork()) < 0) {
-        perror("fork failed");
-        exit(1);
-    }
-    if (pid == 0) {
-        char *args[] = {"/bin/ls", NULL};
-        if (execv(args[0], args) < 0) {
-            perror("execv failed");
-            exit(1);
-        }
-    } else {
-        if (wait(NULL) < 0) {
-            perror("wait failed");
-            exit(1);
-        }
-    }
-}
+        // Search for the command in the given paths and environment
+        for (int i = 0; i < search_path_count; ++i) {
+            char possible_path[MAX_LINE];
+            sprintf(possible_path, "%s/%s", search_paths[i], command);
 
-void execute_command(char *command, char *argv[]) {
-    pid_t pid;
-    if ((pid = fork()) < 0) {
-        perror("fork failed");
-        exit(1);
-    }
-    if (pid == 0) {
-        // In child process, modify the environment variables as needed
-        if (strncmp(command, "./", 2) == 0) {
-            // If the command starts with "./", try to execute it directly
-            if (access(command, X_OK) == 0) {
-                if (execv(command, argv) < 0) {
+            if (access(possible_path, X_OK) == 0) {
+                // Execute the command
+                if (execve(possible_path, argv, envp) < 0) {
+                    fprintf(stderr, "Execution of %s failed\n", command);
                     perror("execv failed");
                     exit(1);
                 }
-                return;
-            }
-        } else {
-            // Otherwise, search for the command in the PATH
-            char *path = getenv("PATH");
-            char *path_copy = strdup(path);
-            char *dir = strtok(path_copy, ":");
-
-            while (dir != NULL) {
-                char possible_path[MAX_LINE];
-                sprintf(possible_path, "%s/%s", dir, command);
-
-                if (access(possible_path, X_OK) == 0) {
-                    argv[0] = possible_path;
-                    if (execv(possible_path, argv) < 0) {
-                        perror("execv failed");
-                        exit(1);
-                    }
-                    return;
-                }
-
-                dir = strtok(NULL, ":");
+                return;  //same
             }
         }
 
@@ -164,8 +104,7 @@ void execute_command(char *command, char *argv[]) {
     add_to_history(command);
 }
 
-
-void decide_command(char *command, char *argv[]) {
+void decide_command(char *command, char *argv[], char **envp) {
     if (command == NULL) {
         return;
     }
@@ -177,49 +116,39 @@ void decide_command(char *command, char *argv[]) {
     } else if (strcmp(command, "history") == 0) {
         add_to_history(command);
         history();
-    } else if (strcmp(command, "cat") == 0) {
-        add_to_history(command);
-        my_cat(argv[1]);
     } else if (strcmp(command, "exit") == 0) {
         add_to_history(command);
         my_exit();
-    } else if (strcmp(command, "sleep") == 0) {
-        add_to_history(command);
-        my_sleep((argv[1]));
-    } else if (strcmp(command, "ls") == 0) {
-        add_to_history(command);
-        my_ls();
-    } else {
-        execute_command(command, argv);
     }
-
+    else {
+        execute_command(command, argv, envp);
+    }
 }
-
-
 
 int main(int argc, char *argv[], char *envp[]) {
     original_env = envp;
-    for (int i = 0; i < argc; ++i) {
-        char var_name[MAX_LINE];
-        //variables for the arguments
-        sprintf(var_name, "ARG%d", i);
-        //add them to the environment variables
-        setenv(var_name, argv[i], 1);
+
+    for (int i = 1; i < argc; ++i) {
+        search_paths[search_path_count++] = strdup(argv[i]);
     }
 
-    //do the first command received from the user
-    if (argv[1] != NULL) {
-        //ditch the first argument, since it is the name of the program
-        argv++;
-        decide_command(argv[0], argv);
+    char *path_env = getenv("PATH");
+    if (path_env != NULL) {
+        char *path = strtok(path_env, ":");
+        while (path != NULL) {
+            search_paths[search_path_count++] = strdup(path);
+            path = strtok(NULL, ":");
+        }
     }
 
     while (1) {
-        //continuously read the input from the user and execute the command
         printf("$ ");
         fflush(stdout);
         char input[MAX_LINE];
-        fgets(input, MAX_LINE, stdin);
+        if (fgets(input, MAX_LINE, stdin) == NULL) {
+            perror("fgets failed");
+            continue;
+        }
         input[strlen(input) - 1] = '\0';
 
         char *command_args[MAX_LINE];
@@ -230,8 +159,14 @@ int main(int argc, char *argv[], char *envp[]) {
             command = strtok(NULL, " ");
             i++;
         }
-        command_args[i] = NULL; // Null-terminate the array
+        command_args[i] = NULL;
 
-        decide_command(command_args[0], command_args);
+        decide_command(command_args[0], command_args, envp);
     }
+
+    //even this is not needed, since we are exiting only using "exit"... still.
+    for (int i = 0; i < search_path_count; ++i) {
+        free(search_paths[i]);
+    }
+    return 0;
 }
