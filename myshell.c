@@ -36,7 +36,7 @@ void pwd() {
 
 void history() {
     for (int i = 0; i < history_count; ++i) {
-        printf("%d %s\n", i, history_list[i]);
+        printf("%s\n", history_list[i]);
     }
 }
 
