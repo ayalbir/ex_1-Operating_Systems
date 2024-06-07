@@ -41,19 +41,25 @@ void history() {
     }
 }
 
-void add_to_history(char *command) {
+void add_to_history(char *command, char *argv[]) {
+    char full_command[MAX_LINE] = "";
+    strcat(full_command, command);
+    for (int i = 1; argv[i] != NULL; ++i) {
+        strcat(full_command, " ");
+        strcat(full_command, argv[i]);
+    }
+
     if (history_count < MAX_HISTORY) {
-        history_list[history_count] = strdup(command);
+        history_list[history_count] = strdup(full_command);
         history_count++;
     } else {
         free(history_list[0]);
         for (int i = 1; i < MAX_HISTORY; ++i) {
             history_list[i - 1] = history_list[i];
         }
-        history_list[MAX_HISTORY - 1] = strdup(command);
+        history_list[MAX_HISTORY - 1] = strdup(full_command);
     }
 }
-
 void my_exit() {
     //not much to do here...
     restore_env();
@@ -102,7 +108,7 @@ void execute_command(char *command, char *argv[], char **envp) {
             exit(1);
         }
     }
-    add_to_history(command);
+    add_to_history(command, argv);
 }
 
 void decide_command(char *command, char *argv[], char **envp) {
@@ -112,13 +118,13 @@ void decide_command(char *command, char *argv[], char **envp) {
     if (strcmp(command, "cd") == 0) {
         cd(argv[1]);
     } else if (strcmp(command, "pwd") == 0) {
-        add_to_history(command);
+        add_to_history(command, argv);
         pwd();
     } else if (strcmp(command, "history") == 0) {
-        add_to_history(command);
+        add_to_history(command, argv);
         history();
     } else if (strcmp(command, "exit") == 0) {
-        add_to_history(command);
+        add_to_history(command, argv);
         my_exit();
     }
     else {
