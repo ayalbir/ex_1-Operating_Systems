@@ -1,5 +1,6 @@
 #!/bin/bash
 # 214104226 Ayal Birenstock
+
 # Ensure correct number of arguments
 if [ -z "$1" ] || [ ! -z "$2" ]; then
   echo "Usage: $0 <source_pgn_file>"
@@ -8,7 +9,7 @@ fi
 
 input_file=$1
 
-#this is the basic board, saved in an array of strings
+# This is the basic board, saved in an array of strings
 board=(
   "  a b c d e f g h"
   "8 r n b q k b n r 8"
@@ -42,10 +43,8 @@ done <"$input_file"
 # Remove the trailing space
 moves=${moves::-1}
 
-#use the Python script
+# Use the Python script to parse moves
 output=$(python3 parse_moves.py "$moves")
-
-#note that the moves aren't numbered
 
 # Print the details of the game
 function print_game_details() {
@@ -56,12 +55,11 @@ function print_game_details() {
     fi
     echo "$l"
   done <"$input_file"
-  echo ""
 }
 
 # Print the instructions
 function print_instructions() {
-  echo -n "Press 'd' to move forward, 'a' to move back, 'w' to go to the start,'s' to go to the end, 'q' to quit: "
+  echo "Press 'd' to move forward, 'a' to move back, 'w' to go to the start, 's' to go to the end, 'q' to quit:"
 }
 
 # Print the board
@@ -73,28 +71,27 @@ function print_board() {
 
 # Apply a move to the board
 function apply_move() {
-  move=$1
-  src_file=${move:0:1}
-  src_rank=${move:1:1}
-  dest_file=${move:2:1}
-  dest_rank=${move:3:1}
-  promotion_piece=${move:4:1}
+  local move=$1
+  local src_file=${move:0:1}
+  local src_rank=${move:1:1}
+  local dest_file=${move:2:1}
+  local dest_rank=${move:3:1}
+  local promotion_piece=${move:4:1}
 
-  src_index=$((9 - src_rank))
-  dest_index=$((9 - dest_rank))
-  src_col=$(($(printf "%d" "'$src_file") - 97))
-  dest_col=$(($(printf "%d" "'$dest_file") - 97))
+  local src_index=$((9 - src_rank))
+  local dest_index=$((9 - dest_rank))
+  local src_col=$(($(printf "%d" "'$src_file") - 97))
+  local dest_col=$(($(printf "%d" "'$dest_file") - 97))
 
   if [[ $src_index -ge 1 && $src_index -le 8 && $dest_index -ge 1 && $dest_index -le 8 ]]; then
-    piece=${board[$src_index]:$((src_col * 2 + 2)):1}
+    local piece=${board[$src_index]:$((src_col * 2 + 2)):1}
     board[$src_index]=${board[$src_index]:0:$((src_col * 2 + 2))}"."${board[$src_index]:$((src_col * 2 + 3))}
     if [[ $piece == "P" && $dest_index == 1 ]]; then
-      #Uppercase pawn promotion
-      #turn the promotion piece to uppercase
+      # Uppercase pawn promotion
       promotion_piece=$(echo $promotion_piece | tr '[:lower:]' '[:upper:]')
       piece=$promotion_piece
     elif [[ $piece == "p" && $dest_index == 8 ]]; then
-      #Lowercase pawn promotion
+      # Lowercase pawn promotion
       piece=$promotion_piece
     fi
     board[$dest_index]=${board[$dest_index]:0:$((dest_col * 2 + 2))}$piece${board[$dest_index]:$((dest_col * 2 + 3))}
@@ -103,7 +100,7 @@ function apply_move() {
   fi
 }
 
-#reset the board to the initial state
+# Reset the board to the initial state
 function reset_board() {
   board=(
     "  a b c d e f g h"
@@ -128,25 +125,61 @@ moves_array=($output)
 # The first move (nothing has been done yet) is 0
 current_move=0
 
-echo " "
 echo "Move $current_move/$all_moves"
 print_board
 print_instructions
 
-# Now the game starts.
-
 # Detect the key pressed by the user, and act accordingly
-while read -n 1 key; do
-  # 'q' to quit
-  if [ "$key" == "q" ]; then
-    echo "Exiting."
-    break
-  fi
-  # 'd' to move forward
-  if [ "$key" == "d" ]; then
-    if [ "$current_move" -lt "$all_moves" ]; then
-      current_move=$((current_move + 1))
-      echo " "
+while true; do
+  read -rsn1 key
+  case "$key" in
+    q)
+      echo "Exiting."
+      break
+      ;;
+    d)
+      if [ "$current_move" -lt "$all_moves" ]; then
+        current_move=$((current_move + 1))
+        echo "Move $current_move/$all_moves"
+        reset_board
+        for ((i = 0; i < current_move; i++)); do
+          apply_move ${moves_array[i]}
+        done
+        print_board
+        print_instructions
+      else
+        echo "No more moves available."
+        print_instructions
+      fi
+      ;;
+    a)
+      if [ "$current_move" -gt 0 ]; then
+        current_move=$((current_move - 1))
+        echo "Move $current_move/$all_moves"
+        reset_board
+        for ((i = 0; i < current_move; i++)); do
+          apply_move ${moves_array[i]}
+        done
+        print_board
+        print_instructions
+        continue
+      fi
+      # apparently still need to print the instructions even if there are no more moves
+      if [ "$current_move" -eq 0 ]; then
+        echo "Move $current_move/$all_moves"
+      print_board
+      print_instructions
+      fi
+      ;;
+    w)
+      current_move=0
+      echo "Move $current_move/$all_moves"
+      reset_board
+      print_board
+      print_instructions
+      ;;
+    s)
+      current_move=$all_moves
       echo "Move $current_move/$all_moves"
       reset_board
       for ((i = 0; i < current_move; i++)); do
@@ -154,53 +187,14 @@ while read -n 1 key; do
       done
       print_board
       print_instructions
-    else
-      echo " "
-      echo "No more moves available."
-      continue
-    fi
-  fi
-  # If the key is 'a', move back
-  if [ "$key" == "a" ]; then
-    if [ "$current_move" -gt 0 ]; then
-      current_move=$((current_move - 1))
-      echo " "
-      echo "Move $current_move/$all_moves"
-      reset_board
-      for ((i = 0; i < current_move; i++)); do
-        apply_move ${moves_array[i]}
-      done
-      print_board
+      ;;
+    '')
+      ;;
+    *)
+      echo "Invalid key pressed: $key"
       print_instructions
-
-    else
-      #"pressing 'a' will have no effect"
-      continue
-    fi
-  fi
-  # If the key is 'w', go to the start
-  if [ "$key" == "w" ]; then
-    # Print the board at the start
-    current_move=0
-    echo " "
-    echo "Move $current_move/$all_moves"
-    reset_board
-    print_board
-    print_instructions
-  fi
-  # If the key is 's', go to the end
-  if [ "$key" == "s" ]; then
-    # Print the board at the end
-    current_move=$all_moves
-    echo " "
-    echo "Move $current_move/$all_moves"
-    reset_board
-    for ((i = 0; i < current_move; i++)); do
-      apply_move ${moves_array[i]}
-    done
-    print_board
-    print_instructions
-  else
-    echo "Invalid key pressed: $key"
-  fi
+      ;;
+  esac
 done
+
+echo "End of game."

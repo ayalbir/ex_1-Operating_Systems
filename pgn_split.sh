@@ -21,9 +21,6 @@ if [ ! -d "$dest_dir" ]; then
     mkdir -p "$dest_dir"
     echo "Created directory '$dest_dir'."
 fi
-#if still here, divide the file as needed (right now not good at all)
-
-
 
 
 echo "Splitting games from '$input_file' to '$dest_dir'."
