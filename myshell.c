@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/wait.h>
+#pragma GCC optimize("O2")
 
 #define MAX_LINE 100
 #define MAX_HISTORY 50
